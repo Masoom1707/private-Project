@@ -277,3 +277,64 @@ export const verifyEmail = async (req, res) => {
       res.status(500).json({ error: 'Server error. Please try again.' });
     }
   };
+
+
+// Logout Controller
+export const logoutUser = async (req, res) => {
+  try {
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: false, // bcz i'm on http not on https use true when https 
+      sameSite: 'Lax' 
+    });
+
+    res.status(200).json({ message: 'Logged out successfully!' });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error. Please try again.' });
+  }
+};
+
+
+// updating the profile functionality
+
+export const updateProfile = async (req, res) => {
+  const { updates } = req.body;
+
+  // Preventing the email, password, or username from updating
+  if (updates.email || updates.password || updates.userName) {
+      return res.status(400).json({ error: "Email, password, and username cannot be updated." });
+  }
+
+  try {
+      const { id } = req.user; 
+
+      let user = await Organizer.findById(id) ||
+                 await Judge.findById(id) ||
+                 await Participant.findById(id);
+
+      if (!user) {
+          return res.status(404).json({ error: "User not found." });
+      }
+
+      // For Participants, preventing the updating `termsAndConditions`
+      if (user instanceof Participant && updates.termsAndConditions) {
+          return res.status(400).json({ error: "Terms and Conditions cannot be updated." });
+      }
+
+      Object.assign(user, updates);
+      await user.save();
+
+      // Exclude sensitive fields before sending the response
+      const { password, verificationCode, verificationCodeExpiry, ...safeUserData } = user.toObject();
+
+      res.status(200).json({
+          message: "Profile updated successfully.",
+          updatedUser: safeUserData,
+      });
+
+  } catch (error) {
+      res.status(500).json({ error: "Server error. Please try again." });
+  }
+};
+
+
