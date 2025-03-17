@@ -23,10 +23,7 @@ const participantSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  confirmPassword: {
-    type: String,
-    required: true,
-  },
+
   collegeName: {
     type: String,
     enum: ['Niagara College Toronto', 'Toronto School of Management', 'Fleming College'],
@@ -53,6 +50,7 @@ const participantSchema = new mongoose.Schema({
     required: function () { return this.signingUpAsMentor; }
   },
   verificationCode:{type:String},
+  verificationCodeExpiry: { type: Date },
   isVerified: {
     type: Boolean,
     default: false,

@@ -22,6 +22,7 @@ const transporter = nodemailer.createTransport({
         <p>Your email verification code is:</p>
         <h2 style="color: #4CAF50;">${verificationCode}</h2>
         <p>Enter this code in the app to verify your account.</p>
+        <p>This code will expire in <b>10 minutes</b>. If you didn’t request this, please ignore this email.</p>
       `,
     };
   

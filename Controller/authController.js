@@ -1,9 +1,10 @@
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+
 import Organizer from '../Model/organizerModel.js';
 import Judge from '../Model/judgeModel.js';
 import Participant from '../Model/participantModel.js';
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
 
 import { sendVerificationEmail } from '../utils/emailService.js';
 
@@ -36,6 +37,9 @@ export const registerOrganizer = async (req, res) => {
     // generating the random code for the verification
     const verificationCode = crypto.randomInt(100000, 999999).toString();
 
+    const verificationCodeExpiry = new Date();
+    verificationCodeExpiry.setMinutes(verificationCodeExpiry.getMinutes() + 10);
+
 
     const newOrganizer = await Organizer.create({
       userName,
@@ -43,16 +47,10 @@ export const registerOrganizer = async (req, res) => {
       email,
       affiliatedOrganization,
       password: hashedPassword,
-      confirmPassword: hashedPassword,
       verificationCode,
+      verificationCodeExpiry,
       isVerified: false
     });
-
-     const verificationToken = jwt.sign(
-        { id: newOrganizer._id, role: 'organizer' },
-        process.env.SECRET_TOKEN,
-        { expiresIn: process.env.SECRET_TOKEN_EXPIRY}
-      );
   
       await sendVerificationEmail(email, verificationCode)
 
@@ -88,14 +86,24 @@ export const registerJudge = async (req, res) => {
 
     const hashedPassword = await hashPassword(password);
 
+    const verificationCode = crypto.randomInt(100000, 999999).toString();
+
+    const verificationCodeExpiry = new Date();
+    verificationCodeExpiry.setMinutes(verificationCodeExpiry.getMinutes() + 10);
+
+
     const newJudge = await Judge.create({
       userName,
       fullName,
       email,
       expertiseAndQualification,
       password: hashedPassword,
-      confirmPassword: hashedPassword,
+      verificationCode,
+      verificationCodeExpiry,
+      isVerified: false
     });
+
+    await sendVerificationEmail(email, verificationCode)
 
     res.status(201).json({
       message: 'Judge registered successfully!',
@@ -137,20 +145,31 @@ export const registerParticipant = async (req, res) => {
 
     const hashedPassword = await hashPassword(password);
 
+    const verificationCode = crypto.randomInt(100000, 999999).toString();
+
+    const verificationCodeExpiry = new Date();
+    verificationCodeExpiry.setMinutes(verificationCodeExpiry.getMinutes() + 10);
+
+
     const newParticipant = await Participant.create({
       userName,
       fullName,
       DOB,
       email,
       password: hashedPassword,
-      confirmPassword: hashedPassword,
       collegeName,
       studentID,
       majorOrDept,
       termsAndConditions,
       signingUpAsMentor,
-      mentorAccessCode: signingUpAsMentor ? mentorAccessCode : undefined
+      mentorAccessCode: signingUpAsMentor ? mentorAccessCode : undefined,
+      verificationCode,
+      verificationCodeExpiry,
+      isVerified: false
     });
+
+
+    await sendVerificationEmail(email, verificationCode)
 
     res.status(201).json({
       message: 'Participant registered successfully!',
@@ -172,14 +191,21 @@ export const verifyEmail = async (req, res) => {
     }
   
     try {
-      const user = await Organizer.findOne({ email });
+      const user =
+      (await Organizer.findOne({ email })) ||
+      (await Judge.findOne({ email })) ||
+      (await Participant.findOne({ email }));
   
       if (!user) {
         return res.status(404).json({ error: 'User not found.' });
       }
-  
+
       if (user.isVerified) {
-        return res.status(400).json({ error: 'Email is already verified.' });
+        return res.status(400).json({ error: 'Email is already verified or registered for the different roles' });
+      }
+
+      if (new Date(user.verificationCodeExpiry).toISOString() <= new Date().toISOString()) {
+        return res.status(400).json({ error: 'Verification code expired. Please request a new one.' });
       }
   
       if (user.verificationCode !== verificationCode) {
@@ -197,3 +223,57 @@ export const verifyEmail = async (req, res) => {
     }
   };
   
+
+
+  // Login controller function
+  export const loginUser = async (req, res) => {
+    const { emailOrUsername, password } = req.body;
+  
+    if (!emailOrUsername || !password) {
+      return res.status(400).json({ error: 'Email/Username and Password are required.' });
+    }
+  
+    try {
+
+      // Checking the username and the email in all the userType that user provided us 
+      const user = 
+        (await Organizer.findOne({ $or: [{ email: emailOrUsername }, { userName: emailOrUsername }] })) ||
+        (await Judge.findOne({ $or: [{ email: emailOrUsername }, { userName: emailOrUsername }] })) ||
+        (await Participant.findOne({ $or: [{ email: emailOrUsername }, { userName: emailOrUsername }] }));
+  
+      if (!user) {
+        return res.status(404).json({ error: 'User not found.' });
+      }
+  
+      if (!user.isVerified) {
+        return res.status(403).json({ error: 'Please verify your email before logging in.' });
+      }
+  
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'Invalid credentials.' });
+      }
+  
+      // Generating the JWT Token
+      const token = jwt.sign(
+        { id: user._id, role: user.role }, 
+        process.env.SECRET_TOKEN, 
+        { expiresIn: process.env.SECRET_TOKEN_EXPIRY }
+      );
+  
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production', 
+        sameSite: 'Lax',
+        maxAge: 24 * 60 * 60 * 1000 // 1 day
+      });
+  
+      res.status(200).json({
+        message: 'Login successful!',
+        user: { id: user._id, userName: user.userName, email: user.email }
+      });
+  
+    } catch (error) {
+      res.status(500).json({ error: 'Server error. Please try again.' });
+    }
+  };

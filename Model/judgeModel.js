@@ -23,15 +23,12 @@ const judgeSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  confirmPassword: {
-    type: String,
-    required: true,
-  },
   verificationCode:{type:String},
+  verificationCodeExpiry: { type: Date },
   isVerified: {
     type: Boolean,
     default: false,
-  }
+  },
 }, { timestamps: true });
 
 const Judge = mongoose.model('Judge', judgeSchema);

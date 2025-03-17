@@ -3,7 +3,8 @@ import {
   registerOrganizer, 
   registerJudge, 
   registerParticipant, 
-  verifyEmail
+  verifyEmail,
+  loginUser
 } from '../Controller/authController.js';
 
 
@@ -13,5 +14,6 @@ router.post('/register/organizer', registerOrganizer);
 router.post('/register/judge', registerJudge);
 router.post('/register/participant', registerParticipant);
 router.post('/verify-email', verifyEmail);
+router.post('/login', loginUser);
 
 export default router;
